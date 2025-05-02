@@ -1,4 +1,5 @@
 "use client";
+import getUsersCount from "@/lib/get-users-count";
 import { useEffect, useRef, useState } from "react";
 
 export default function Chat() {
@@ -7,10 +8,11 @@ export default function Chat() {
   const [connectionStatus, setConnectionStatus] = useState<
     "connected" | "disconnected" | "connecting"
   >("connecting");
+  const [usersCount, setUsersCount] = useState(1);
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    const ws = new WebSocket(`wss://${process.env.WSS_URL}`);
+    const ws = new WebSocket(`wss://${process.env.NEXT_PUBLIC_WSS_URL}`);
     console.log("WS: ", ws);
     wsRef.current = ws;
 
@@ -22,8 +24,13 @@ export default function Chat() {
       setConnectionStatus("disconnected");
     };
 
-    ws.onmessage = (event) => {
-      setMessages((prevMessages) => [...prevMessages, event.data]);
+    ws.onmessage = (event: MessageEvent<string>) => {
+      const newUsersCount = getUsersCount(event.data);
+      if (newUsersCount) {
+        setUsersCount(newUsersCount);
+      } else {
+        setMessages((prevMessages) => [...prevMessages, event.data]);
+      }
     };
 
     return () => {
@@ -47,7 +54,7 @@ export default function Chat() {
     <main className="flex min-h-screen items-center justify-center bg-gradient-to-b from-gray-50 to-gray-100">
       <div className="w-full max-w-2xl mx-4 bg-white rounded-xl shadow-lg flex flex-col h-[80vh] border border-gray-200">
         <div
-          className={`px-6 py-3 text-sm font-medium rounded-t-xl ${
+          className={`px-6 py-3 text-sm font-medium rounded-t-xl flex justify-between ${
             connectionStatus === "connected"
               ? "bg-green-50 text-green-700 border-b border-green-100"
               : connectionStatus === "disconnected"
@@ -67,6 +74,10 @@ export default function Chat() {
             ></div>
             Status: {connectionStatus}
           </div>
+
+          {connectionStatus === "connected" && (
+            <div className="w-24">Connected: {usersCount}</div>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50">
