@@ -1,9 +1,13 @@
 "use client";
-import getUsersCount from "@/lib/get-users-count";
 import { useEffect, useRef, useState } from "react";
 
+interface ChatMessage {
+  userName: string;
+  message?: string;
+}
+
 export default function Chat() {
-  const [messages, setMessages] = useState<string[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [connectionStatus, setConnectionStatus] = useState<
     "connected" | "disconnected" | "connecting"
@@ -11,13 +15,29 @@ export default function Chat() {
   const [usersCount, setUsersCount] = useState(1);
   const wsRef = useRef<WebSocket | null>(null);
 
+  const [clientData, setClientData] = useState<{
+    roomName: string;
+    isConnect: boolean;
+    userName: string;
+  }>({
+    roomName: "default",
+    userName: "",
+    isConnect: false,
+  });
+
   useEffect(() => {
-    const ws = new WebSocket(`wss://${process.env.NEXT_PUBLIC_WSS_URL}`);
-    console.log("WS: ", ws);
+    if (!clientData?.isConnect) return;
+
+    const ws = new WebSocket(
+      `wss://${process.env.NEXT_PUBLIC_WSS_URL}/${clientData.roomName}`
+    );
     wsRef.current = ws;
 
     ws.onopen = () => {
       setConnectionStatus("connected");
+      const initMessage: ChatMessage = { userName: clientData.userName };
+      // sending user information to the server on websocket connect
+      ws.send(JSON.stringify(initMessage));
     };
 
     ws.onclose = () => {
@@ -25,11 +45,28 @@ export default function Chat() {
     };
 
     ws.onmessage = (event: MessageEvent<string>) => {
-      const newUsersCount = getUsersCount(event.data);
-      if (newUsersCount) {
-        setUsersCount(newUsersCount);
+      // TODO parse message event
+      const message: ChatMessage = JSON.parse(event.data);
+      if (message.userName === "system") {
+        if (!message.message) return;
+
+        const [key, value] = message.message?.split(":");
+        switch (key) {
+          case "user_count":
+            setUsersCount(Number(value));
+            break;
+
+          case "error":
+            const errorMessage: ChatMessage = {
+              userName: "system",
+              message: value,
+            };
+
+            setMessages((prevMessages) => [...prevMessages, errorMessage]);
+            break;
+        }
       } else {
-        setMessages((prevMessages) => [...prevMessages, event.data]);
+        setMessages((prevMessages) => [...prevMessages, message]);
       }
     };
 
@@ -38,17 +75,84 @@ export default function Chat() {
         wsRef.current.close();
       }
     };
-  }, []);
+  }, [clientData.isConnect]);
 
   const sendMessage = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!newMessage.trim()) return;
 
+    const message: ChatMessage = {
+      userName: clientData.userName,
+      message: newMessage,
+    };
+
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(newMessage);
+      wsRef.current.send(JSON.stringify(message));
       setNewMessage("");
     }
   };
+
+  function handleNewRoom(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setClientData((prev) => ({ ...prev, isConnect: true }));
+  }
+
+  if (!clientData.isConnect)
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-gradient-to-b from-gray-50 to-gray-100">
+        <form
+          onSubmit={handleNewRoom}
+          className="border-t border-gray-100 p-6 bg-white rounded-b-xl"
+        >
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col text-black">
+              <label htmlFor="userName" className="text-sm">
+                Enter Your Name:
+              </label>
+              <input
+                type="text"
+                id="userName"
+                value={clientData.userName}
+                onChange={(e) =>
+                  setClientData((prev) => ({
+                    ...prev,
+                    userName: e.target.value,
+                  }))
+                }
+                className="flex-1  rounded-lg border border-gray-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                placeholder="Enter your name..."
+              />
+            </div>
+            <div className="flex flex-col text-black">
+              <label htmlFor="roomId" className="text-sm">
+                Enter Room Name:
+              </label>
+              <input
+                type="text"
+                id="roomId"
+                value={clientData.roomName}
+                onChange={(e) =>
+                  setClientData((prev) => ({
+                    ...prev,
+                    roomName: e.target.value,
+                  }))
+                }
+                className="flex-1  rounded-lg border border-gray-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                placeholder="Enter room name..."
+              />
+            </div>
+            <button
+              type="submit"
+              className={
+                "px-6 py-3 rounded-lg font-medium transition-all bg-blue-500 text-white hover:bg-blue-600 active:bg-blue-700 shadow-sm hover:shadow cursor-pointer"
+              }
+            >
+              Connect
+            </button>
+          </div>
+        </form>
+      </main>
+    );
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-gradient-to-b from-gray-50 to-gray-100">
@@ -86,7 +190,20 @@ export default function Chat() {
               key={index}
               className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 transition-all hover:shadow-md"
             >
-              <p className="text-gray-800 font-medium">{message}</p>
+              <p className="text-gray-800 font-medium">
+                <span
+                  className={`font-extrabold ${
+                    message.userName === clientData.userName
+                      ? "text-cyan-800"
+                      : message.userName !== "system"
+                      ? "text-rose-800"
+                      : "text-black"
+                  }`}
+                >
+                  {message.userName}:
+                </span>{" "}
+                {message.message}
+              </p>
             </div>
           ))}
         </div>
@@ -105,7 +222,9 @@ export default function Chat() {
             />
             <button
               type="submit"
-              disabled={connectionStatus !== "connected"}
+              disabled={
+                connectionStatus !== "connected" || newMessage.length < 1
+              }
               className={`px-6 py-3 rounded-lg font-medium transition-all ${
                 connectionStatus === "connected"
                   ? "bg-blue-500 text-white hover:bg-blue-600 active:bg-blue-700 shadow-sm hover:shadow"
