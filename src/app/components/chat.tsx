@@ -16,6 +16,7 @@ export default function Chat() {
   >("connecting");
   const [usersCount, setUsersCount] = useState(1);
   const wsRef = useRef<WebSocket | null>(null);
+  const messagesAreaRef = useRef<HTMLDivElement>(null);
 
   const [clientData, setClientData] = useState<{
     roomName: string;
@@ -27,6 +28,12 @@ export default function Chat() {
     isConnect: false,
   });
 
+  // scroll to bottom on new messages
+  useEffect(() => {
+    messagesAreaRef.current?.scrollIntoView({ block: "end" });
+  }, [messages.length]);
+
+  // websockets listeners
   useEffect(() => {
     if (!clientData?.isConnect) return;
 
@@ -217,6 +224,7 @@ export default function Chat() {
               </p>
             </div>
           ))}
+          <div ref={messagesAreaRef} />
         </div>
 
         <form
