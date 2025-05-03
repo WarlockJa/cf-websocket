@@ -6,6 +6,8 @@ interface ChatMessage {
   message?: string;
 }
 
+type ChatSystemMessages = "error" | "user_count" | "history";
+
 export default function Chat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState("");
@@ -51,9 +53,18 @@ export default function Chat() {
         if (!message.message) return;
 
         const [key, value] = message.message?.split(":");
-        switch (key) {
+        switch (key as ChatSystemMessages) {
           case "user_count":
             setUsersCount(Number(value));
+            break;
+
+          case "history":
+            // TODO validate?
+            const historyMessages = JSON.parse(message.message.slice(8)).map(
+              (msgStr: string) => JSON.parse(msgStr)
+            ) as ChatMessage[];
+
+            setMessages(historyMessages);
             break;
 
           case "error":
